@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>敲代码测速</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f1724'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='%2338bdf8' font-family='monospace'%3E%26gt;%3C/text%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0b0f1a;
+    --bg-2:#101827;
+    --panel:#131c2f;
+    --panel-2:#182438;
+    --line:#243047;
+    --text:#e6edf7;
+    --dim:#8ba0bd;
+    --accent:#38bdf8;
+    --accent-2:#22d3ee;
+    --good:#4ade80;
+    --bad:#f87171;
+    --code:#cbd5e1;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:'JetBrains Mono',ui-monospace,'SF Mono',Consolas,'Microsoft YaHei',monospace;
+    background:radial-gradient(1200px 600px at 80% -10%,#152238 0%,var(--bg) 55%);
+    color:var(--text);
+    min-height:100vh;
+    padding:18px 16px 40px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:860px;margin:0 auto}
+
+  /* ===== 顶栏 ===== */
+  header{
+    display:flex;align-items:center;justify-content:space-between;
+    gap:12px;padding:6px 2px 18px;
+  }
+  .brand{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:700;letter-spacing:.2px}
+  .brand .logo{
+    width:30px;height:30px;border-radius:8px;flex:none;
+    background:linear-gradient(135deg,#0ea5e9,#22d3ee);
+    display:grid;place-items:center;font-size:14px;color:#04121d;
+    box-shadow:0 4px 14px rgba(56,189,248,.35);
+  }
+  .brand small{font-weight:400;color:var(--dim);margin-left:2px}
+
+  .langs{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
+  .lang-tabs{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .langs button{
+    appearance:none;border:1px solid var(--line);background:var(--panel);
+    color:var(--dim);font:inherit;font-size:12px;padding:6px 12px;border-radius:999px;
+    cursor:pointer;transition:.18s;
+  }
+  .langs button:hover{border-color:var(--accent);color:var(--text)}
+  .langs button.on{background:rgba(56,189,248,.14);border-color:var(--accent);color:var(--accent)}
+  .topic-pick{
+    appearance:none;border:1px solid var(--line);background:var(--panel);
+    color:var(--text);font:inherit;font-size:12px;padding:6px 10px;border-radius:999px;
+    cursor:pointer;max-width:230px;
+  }
+  .topic-pick:focus{outline:none;border-color:var(--accent)}
+  .topic-pick:disabled{opacity:.5;cursor:not-allowed}
+
+  /* ===== 编辑器面板 ===== */
+  .editor{
+    background:linear-gradient(180deg,var(--panel-2),var(--panel));
+    border:1px solid var(--line);border-radius:14px;overflow:hidden;
+    box-shadow:0 18px 50px rgba(3,8,20,.55);
+  }
+  .titlebar{
+    display:flex;align-items:center;gap:8px;
+    padding:11px 16px;background:#0d1524;border-bottom:1px solid var(--line);
+  }
+  .dot{width:11px;height:11px;border-radius:50%}
+  .dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+  .filename{margin-left:10px;font-size:12px;color:var(--dim);letter-spacing:.2px}
+  .titlebar .status{margin-left:auto;font-size:11px;color:var(--accent)}
+  .titlebar .status.done{color:var(--good)}
+
+  /* 代码显示区 */
+  .code-area{position:relative;padding:18px 8px 22px;font-size:15px;line-height:1.75;overflow-x:auto}
+  .code-line{display:flex}
+  .gutter{
+    flex:none;width:44px;text-align:right;padding-right:14px;
+    color:#3d4c66;user-select:none;font-size:12px;line-height:1.75;
+  }
+  .glyphs{white-space:pre-wrap;word-break:break-all;color:var(--code)}
+  .c{color:var(--code)}
+  .c.good{color:var(--good)}
+  .c.bad{color:var(--bad);background:rgba(248,113,113,.18);border-radius:3px}
+  .c.cur{
+    background:var(--accent);color:#04121d;border-radius:3px;
+    animation:blink 1.1s steps(1) infinite;
+  }
+  .c.cur.bad{background:var(--bad);color:#1c0a0a}
+  @keyframes blink{50%{opacity:.25}}
+
+  /* 隐藏输入框（捕获键盘） */
+  .catcher{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;border:0;background:transparent;color:transparent;pointer-events:none}
+
+  /* 完成提示 */
+  .done-banner{
+    display:none;margin-top:14px;padding:13px 16px;border-radius:10px;
+    background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.35);color:var(--good);
+    font-size:13px;text-align:center;
+  }
+  .done-banner.show{display:block}
+
+  /* ===== 统计栏 ===== */
+  .stats{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px;
+  }
+  .stat{
+    background:linear-gradient(180deg,var(--panel-2),var(--panel));
+    border:1px solid var(--line);border-radius:12px;padding:14px 16px;
+    text-align:center;
+  }
+  .stat .num{font-size:30px;font-weight:800;letter-spacing:.3px;color:var(--accent)}
+  .stat .num.small{font-size:22px}
+  .stat .lbl{margin-top:3px;font-size:11px;color:var(--dim);letter-spacing:1px}
+  .stat.good .num{color:var(--good)}
+  .stat.warn .num{color:#fbbf24}
+
+  /* 进度条 */
+  .progress{margin-top:16px}
+  .progress .track{height:7px;background:#0d1524;border-radius:999px;overflow:hidden;border:1px solid var(--line)}
+  .progress .bar{height:100%;width:0%;background:linear-gradient(90deg,#0ea5e9,#22d3ee);border-radius:999px;transition:width .25s}
+  .progress .meta{display:flex;justify-content:space-between;margin-top:7px;font-size:11px;color:var(--dim)}
+
+  /* ===== 操作 & 自定义 ===== */
+  .actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+  .btn{
+    appearance:none;border:1px solid var(--line);border-radius:10px;cursor:pointer;
+    font:inherit;font-size:13px;padding:10px 18px;transition:.18s;background:var(--panel);color:var(--text);
+  }
+  .btn:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .btn.primary{background:linear-gradient(135deg,#0ea5e9,#22d3ee);border-color:transparent;color:#04121d;font-weight:700}
+  .btn.primary:hover{filter:brightness(1.06)}
+
+  details{margin-top:18px;border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden}
+  summary{cursor:pointer;padding:12px 16px;font-size:13px;color:var(--dim);list-style:none;display:flex;align-items:center;gap:8px}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"＋";color:var(--accent);font-size:14px}
+  details[open] summary::before{content:"－"}
+  .custom{padding:14px 16px 16px;border-top:1px solid var(--line)}
+  .custom textarea{
+    width:100%;min-height:150px;resize:vertical;background:#0d1524;color:var(--code);
+    border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit;font-size:14px;line-height:1.6;
+  }
+  .custom textarea:focus{outline:none;border-color:var(--accent)}
+  .custom .row{display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:10px}
+  .custom .tip{font-size:11px;color:var(--dim)}
+
+  /* ===== 结果页 ===== */
+  .result{
+    display:none;margin-top:16px;background:linear-gradient(180deg,var(--panel-2),var(--panel));
+    border:1px solid var(--line);border-radius:14px;padding:22px;
+  }
+  .result.show{display:block}
+  .result h2{font-size:15px;color:var(--dim);font-weight:600;margin-bottom:16px;letter-spacing:.5px}
+  .result-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+  .r-item .r-num{font-size:34px;font-weight:800;color:var(--accent)}
+  .r-item .r-num.good{color:var(--good)}
+  .r-item .r-num.warn{color:#fbbf24}
+  .r-item .r-lbl{font-size:12px;color:var(--dim);margin-top:2px}
+  .verdict{margin-top:18px;padding-top:16px;border-top:1px solid var(--line);font-size:13px;color:var(--text);line-height:1.7}
+  .verdict b{color:var(--accent)}
+
+  footer{margin-top:26px;text-align:center;font-size:11px;color:#3d4c66;line-height:1.8}
+
+  @media (max-width:520px){
+    body{padding:14px 12px 32px}
+    .brand{font-size:13px}
+    .langs button{padding:5px 10px}
+    .code-area{font-size:14px}
+    .gutter{width:34px;padding-right:10px;font-size:11px}
+    .stat{padding:12px 10px}
+    .stat .num{font-size:24px}
+    .stat .num.small{font-size:18px}
+    .result-grid{grid-template-columns:repeat(2,1fr)}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ===== 视图：顶栏 ===== -->
+  <header>
+    <div class="brand">
+      <span class="logo">&gt;_</span>
+      <span>敲代码测速<small>typing test</small></span>
+    </div>
+    <div class="langs">
+      <div class="lang-tabs" id="langs"></div>
+      <select class="topic-pick" id="topicSel" aria-label="选择题目"></select>
+    </div>
+  </header>
+
+  <!-- ===== 视图：编辑器 ===== -->
+  <section class="editor">
+    <div class="titlebar">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="filename" id="filename">p1035.cpp</span>
+      <span class="status" id="status">点击代码区开始</span>
+    </div>
+    <div class="code-area" id="codeArea">
+      <div id="codeLines"></div>
+    </div>
+  </section>
+
+  <div class="done-banner" id="doneBanner">已全部敲完</div>
+
+  <!-- ===== 视图：统计栏 ===== -->
+  <section class="stats">
+    <div class="stat"><div class="num" id="cpm">0</div><div class="lbl">字符 / 分钟</div></div>
+    <div class="stat good"><div class="num small" id="wpm">0</div><div class="lbl">字 / 分钟</div></div>
+    <div class="stat warn"><div class="num small" id="acc">100%</div><div class="lbl">准确率</div></div>
+  </section>
+
+  <section class="progress">
+    <div class="track"><div class="bar" id="bar"></div></div>
+    <div class="meta"><span id="pTime">0.0s</span><span id="pChars">0 / 0</span></div>
+  </section>
+
+  <!-- ===== 视图：操作 ===== -->
+  <div class="actions">
+    <button class="btn primary" id="restartBtn">重新开始</button>
+    <button class="btn" id="pauseBtn">暂停</button>
+    <button class="btn" id="tapBtn">聚焦输入框</button>
+  </div>
+
+  <details>
+    <summary>粘贴自定义代码来测速</summary>
+    <div class="custom">
+      <textarea id="customCode" spellcheck="false" placeholder="在这里粘贴任意代码…"></textarea>
+      <div class="row">
+        <span class="tip">粘贴后点下方按钮开始</span>
+        <button class="btn" id="applyCustom">用这段代码开始</button>
+      </div>
+    </div>
+  </details>
+
+  <!-- ===== 视图：结果 ===== -->
+  <section class="result" id="result">
+    <h2>本次成绩</h2>
+    <div class="result-grid">
+      <div class="r-item"><div class="r-num" id="rCpm">0</div><div class="r-lbl">字符 / 分钟 (CPM)</div></div>
+      <div class="r-item"><div class="r-num good" id="rWpm">0</div><div class="r-lbl">字 / 分钟 (WPM)</div></div>
+      <div class="r-item"><div class="r-num warn" id="rAcc">0</div><div class="r-lbl">准确率</div></div>
+      <div class="r-item"><div class="r-num" id="rTime">0</div><div class="r-lbl">用时</div></div>
+    </div>
+    <div class="verdict" id="verdict"></div>
+  </section>
+
+  <input class="catcher" id="catcher" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="输入区">
+
+  <footer>空格也算一个字符 · 支持中文/英文 · 回车代表换行</footer>
+</div>
+
+<script>
+var SAMPLES = {
+  // ========== JavaScript ==========
+  js_quick: {
+    title: "快速排序",
+    name: "quick.js",
+    code: `function quickSort(arr) {
+  if (arr.length <= 1) return arr;
+  const pivot = arr[0];
+  const left = [];
+  const right = [];
+  for (let i = 1; i < arr.length; i++) {
+    arr[i] < pivot ? left.push(arr[i]) : right.push(arr[i]);
+  }
+  return [...quickSort(left), pivot, ...quickSort(right)];
+}
+const data = [9, 2, 7, 1, 8, 3, 6, 4, 5];
+console.log("排序结果:", quickSort(data).join(" "));`
+  },
+  js_fib: {
+    title: "斐波那契（迭代版）",
+    name: "fib.js",
+    code: `function fib(n){
+  if(n===1||n===2) return 1;
+  let a=1,b=1;
+  for(let i=3;i<=n;i++){
+    let t=a+b;
+    a=b;
+    b=t;
+  }
+  return b;
+}
+for(let i=1;i<=10;i++){
+  console.log(\`fib(\${i}) = \${fib(i)}\`);
+}`
+  },
+  js_sum: {
+    title: "等差数列求和",
+    name: "sum.js",
+    code: `function calcSum(n){
+  let s=0;
+  for(let i=1;i<=n;i++){
+    s+=i;
+  }
+  return s;
+}
+let num=100;
+let res=calcSum(num);
+console.log("1~"+num+"总和："+res);`
+  },
+
+  // ========== HTML ==========
+  html_card: {
+    title: "商品卡片",
+    name: "card.html",
+    code: `<div class="card">
+  <img src="cover.jpg" alt="封面" />
+  <h2>产品标题</h2>
+  <p>这是产品的一段简介文字，用来向用户说明核心卖点。</p>
+  <button class="btn-buy">立即购买</button>
+</div>
+<style>
+.card {
+  max-width: 320px;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+}
+.card h2 { margin: 8px 0; }
+</style>`
+  },
+  html_form: {
+    title: "登录表单",
+    name: "form.html",
+    code: `<form class="login-form">
+  <div class="item">
+    <label>用户名</label>
+    <input type="text" name="username" placeholder="请输入用户名">
+  </div>
+  <div class="item">
+    <label>密码</label>
+    <input type="password" name="pwd" placeholder="输入密码">
+  </div>
+  <button type="submit">登录</button>
+</form>
+<style>
+.login-form{width:300px;margin:20px auto;}
+.item{margin-bottom:12px;}
+input{width:100%;padding:8px;box-sizing:border-box;}
+</style>`
+  },
+
+  // ========== Python ==========
+  py_fib: {
+    title: "斐波那契数列",
+    name: "fib.py",
+    code: `def fibonacci(n):
+    """返回斐波那契数列的前 n 项"""
+    if n <= 0:
+        return []
+    seq = [0, 1]
+    while len(seq) < n:
+        seq.append(seq[-1] + seq[-2])
+    return seq[:n]
+for i, v in enumerate(fibonacci(12)):
+    print(f"{i + 1}: {v}")`
+  },
+  py_sumfac: {
+    title: "阶乘累加",
+    name: "sum_fac.py",
+    code: `def fact(x):
+    res=1
+    for i in range(1,x+1):
+        res *= i
+    return res
+
+s=0
+n=8
+for i in range(1,n+1):
+    s += fact(i)
+print("阶乘和",s)`
+  },
+  py_prime: {
+    title: "素数判断",
+    name: "prime.py",
+    code: `def is_prime(x):
+    if x<2:
+        return False
+    for i in range(2,int(x**0.5)+1):
+        if x%i==0:
+            return False
+    return True
+
+for num in range(2,30):
+    if is_prime(num):
+        print(num,end=" ")`
+  },
+
+  // ========== CSS ==========
+  css_btn: {
+    title: "按钮样式",
+    name: "style.css",
+    code: `:root {
+  --primary: #0ea5e9;
+  --radius: 10px;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 22px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+.btn:hover {
+  transform: translateY(-2px);
+}
+@media (max-width: 600px) {
+  .btn { width: 100%; }
+}`
+  },
+  css_card: {
+    title: "深色卡片",
+    name: "card.css",
+    code: `.box{
+  background:#111827;
+  border-radius:14px;
+  padding:16px;
+  border:1px solid #273449;
+}
+.box h3{
+  color:#e2e8f0;
+  margin:0 0 8px;
+}
+.box p{
+  color:#94a3b8;
+  line-height:1.6;
+}
+.box-footer{
+  margin-top:12px;
+  display:flex;
+  justify-content:space-between;
+}`
+  },
+
+  // ========== C++（新增多套，包含洛谷入门真题代码，适合你练习） ==========
+  cpp_binsearch: {
+    title: "二分查找",
+    name: "binary.cpp",
+    code: `#include <iostream>
+#include <vector>
+using namespace std;
+int binarySearch(const vector<int>& arr, int target) {
+  int left = 0, right = arr.size() - 1;
+  while (left <= right) {
+    int mid = left + (right - left) / 2;
+    if (arr[mid] == target) return mid;
+    if (arr[mid] < target) left = mid + 1;
+    else right = mid - 1;
+  }
+  return -1;
+}
+int main() {
+  vector<int> data = {1, 3, 5, 7, 9, 11};
+  cout << "Index: " << binarySearch(data, 7) << endl;
+  return 0;
+}`
+  },
+  cpp_Luogu_p1035: {
+    title: "洛谷 P1035 级数求和",
+    name: "p1035.cpp",
+    code: `#include <cstdio>
+int main()
+{
+    int k;
+    scanf("%d",&k);
+    double s=0.0;
+    int n=0;
+    while(s<=k)
+    {
+        n++;
+        s+=1.0/n;
+    }
+    printf("%d\\n",n);
+    return 0;
+}`
+  },
+  cpp_Luogu_p1046: {
+    title: "洛谷 P1046 陶陶摘苹果",
+    name: "p1046.cpp",
+    code: `#include <cstdio>
+int main()
+{
+    int a[10];
+    for(int i=0;i<10;i++){
+        scanf("%d",&a[i]);
+    }
+    int h;
+    scanf("%d",&h);
+    h+=30;
+    int cnt=0;
+    for(int i=0;i<10;i++){
+        if(a[i]<=h) cnt++;
+    }
+    printf("%d",cnt);
+    return 0;
+}`
+  },
+
+  // ========== Java ==========
+  java_avg: {
+    title: "数组平均值",
+    name: "Main.java",
+    code: `public class Main {
+  public static void main(String[] args) {
+    int[] nums = {4, 2, 8, 5, 1, 9};
+    int sum = 0;
+    for (int n : nums) {
+      sum += n;
+    }
+    double avg = (double) sum / nums.length;
+    System.out.printf("总和: %d, 平均: %.2f%n", sum, avg);
+  }
+}`
+  },
+  java_bubble: {
+    title: "冒泡排序",
+    name: "Bubble.java",
+    code: `public class Bubble {
+    public static void main(String[] args) {
+        int arr[]={5,2,9,1,5,6};
+        int len=arr.length;
+        for(int i=0;i<len-1;i++){
+            for(int j=0;j<len-1-i;j++){
+                if(arr[j]>arr[j+1]){
+                    int t=arr[j];
+                    arr[j]=arr[j+1];
+                    arr[j+1]=t;
+                }
+            }
+        }
+        for(int v:arr) System.out.print(v+" ");
+    }
+}`
+  }
+};
+
+
+var KEYS = Object.keys(SAMPLES);
+
+/* ===== 状态 ===== */
+var LANGS = [
+  {key:"js",   label:"JS"},
+  {key:"py",   label:"Python"},
+  {key:"html", label:"HTML"},
+  {key:"css",  label:"CSS"},
+  {key:"cpp",  label:"C++"},
+  {key:"java", label:"Java"}
+];
+var currentLang = "cpp";              // 当前语言
+var currentTopic = "cpp_Luogu_p1035";  // 当前题目
+var target = SAMPLES[currentTopic].code;  // 目标代码
+var typed = "";                    // 已输入
+var started = false;               // 是否已开始计时
+var finished = false;              // 是否完成
+var paused = false;
+var startTime = 0;
+var elapsedMs = 0;
+var timerId = null;
+var correctTotal = 0;              // 全程正确字符累计
+
+var $ = function(id){ return document.getElementById(id); };
+
+/* ===== 初始化语言切换 ===== */
+var langsEl = $("langs");
+var topicSel = $("topicSel");
+
+LANGS.forEach(function(L){
+  var b = document.createElement("button");
+  b.textContent = L.label;
+  b.dataset.lang = L.key;
+  b.addEventListener("click", function(){
+    selectLang(L.key);
+  });
+  langsEl.appendChild(b);
+});
+
+/* 取某语言下的全部题目 */
+function topicsOf(lang){
+  return KEYS.filter(function(k){ return k.indexOf(lang + "_") === 0; });
+}
+
+/* 填充题目下拉框 */
+function fillTopics(){
+  topicSel.innerHTML = "";
+  topicsOf(currentLang).forEach(function(k){
+    var o = document.createElement("option");
+    o.value = k;
+    o.textContent = SAMPLES[k].title + " · " + SAMPLES[k].name;
+    topicSel.appendChild(o);
+  });
+  topicSel.disabled = false;
+  topicSel.value = currentTopic;
+}
+
+/* 切换语言：默认落到该语言的第一题 */
+function selectLang(lang){
+  var topics = topicsOf(lang);
+  if(topics.length === 0) return;
+  currentLang = lang;
+  currentTopic = topics[0];
+  fillTopics();
+  Array.prototype.forEach.call(langsEl.children, function(btn){
+    btn.className = btn.dataset.lang === lang ? "on" : "";
+  });
+  applyTopic(currentTopic);
+}
+
+/* 应用题目：换目标代码并重开一轮 */
+function applyTopic(k){
+  currentTopic = k;
+  target = SAMPLES[k].code;
+  $("filename").textContent = SAMPLES[k].name;
+  reset();
+}
+
+/* ===== 渲染代码 ===== */
+function render(){
+  var el = $("codeLines");
+  el.innerHTML = "";
+  var lines = target.split("\n");
+  for(var i=0;i<lines.length;i++){
+    var line = document.createElement("div");
+    line.className = "code-line";
+    var g = document.createElement("span");
+    g.className = "gutter";
+    g.textContent = i+1;
+    var glyphs = document.createElement("span");
+    glyphs.className = "glyphs";
+    var lineText = lines[i];
+    var lineStart = target.indexOf(lineText, 0);
+    // 逐字符渲染（简化：整行字符）
+    for(var j=0;j<lineText.length;j++){
+      var s = document.createElement("span");
+      s.className = "c";
+      s.textContent = lineText[j] === " " ? "\u00A0" : lineText[j];
+      glyphs.appendChild(s);
+    }
+    line.appendChild(g);
+    line.appendChild(glyphs);
+    el.appendChild(line);
+  }
+  applyStates();
+}
+
+/* 计算全局字符索引到 (行,列) —— 简化用偏移累加 */
+function applyStates(){
+  var spans = document.querySelectorAll("#codeLines .c");
+  // 构建全局字符位置 -> span 映射
+  var idx = 0;
+  var curLine = 0;
+  for(var i=0;i<spans.length;i++){
+    // 用累计方式对应 typed 字符串，忽略换行（换行由 div 结构天然对应）
+    var ch = typed.length > idx ? typed[idx] : "";
+    var targetCh = getTargetChar(idx);
+    spans[i].className = "c";
+    if(idx < typed.length){
+      if(ch === targetCh){
+        spans[i].classList.add("good");
+      } else {
+        spans[i].classList.add("bad");
+      }
+    }
+    if(idx === typed.length && !finished){
+      spans[i].classList.add("cur");
+      if(idx < typed.length && ch !== targetCh) spans[i].classList.add("bad");
+    }
+    idx++;
+  }
+}
+
+/* 获取目标第 idx 个字符（忽略换行） */
+function getTargetChar(idx){
+  var noNL = target.replace(/\n/g, "");
+  return noNL[idx];
+}
+
+/* ===== 更新统计 ===== */
+function updateStats(){
+  var noNL = target.replace(/\n/g, "");
+  var total = noNL.length;
+  var done = Math.min(typed.length, total);
+  // 正确数
+  var correct = 0;
+  for(var i=0;i<typed.length;i++){
+    if(typed[i] === noNL[i]) correct++;
+  }
+  correctTotal = correct;
+  var sec = elapsedMs/1000;
+  var cpm = sec > 0 ? Math.round(correct/sec*60) : 0;
+  var wpm = sec > 0 ? Math.round((correct/5)/sec*60) : 0;
+  var acc = typed.length > 0 ? Math.round(correct/typed.length*100) : 100;
+
+  $("cpm").textContent = cpm;
+  $("wpm").textContent = wpm;
+  $("acc").textContent = acc + "%";
+  $("bar").style.width = (done/total*100) + "%";
+  $("pChars").textContent = done + " / " + total;
+  $("pTime").textContent = (sec).toFixed(1) + "s";
+
+  // 难度色
+  if(wpm >= 180) $("cpm").parentElement.classList.add("good");
+  else $("cpm").parentElement.classList.remove("good");
+}
+
+/* ===== 计时器 ===== */
+function startTimer(){
+  startTime = Date.now() - elapsedMs;
+  timerId = setInterval(function(){
+    if(!paused && started && !finished){
+      elapsedMs = Date.now() - startTime;
+      updateStats();
+    }
+  }, 100);
+}
+
+/* ===== 输入处理 ===== */
+function onInput(){
+  var val = $("catcher").value;
+  var noNL = target.replace(/\n/g, "");
+  var maxLen = noNL.length;
+
+  if(!started && val.length > 0){
+    started = true;
+    $("status").textContent = "计时中…";
+    startTimer();
+  }
+  if(paused) paused = false;
+
+  // 裁剪超出长度
+  if(val.length > maxLen) val = val.slice(0, maxLen);
+  // 忽略用户键入的换行（代码换行由结构决定）
+  val = val.replace(/\n/g, "");
+  $("catcher").value = val;
+  typed = val;
+
+  render();
+  updateStats();
+
+  if(typed.length >= maxLen){
+    finish();
+  }
+}
+
+function finish(){
+  finished = true;
+  clearInterval(timerId);
+  var noNL = target.replace(/\n/g, "");
+  var total = noNL.length;
+  var correct = 0;
+  for(var i=0;i<typed.length;i++) if(typed[i]===noNL[i]) correct++;
+  var sec = elapsedMs/1000;
+  var cpm = sec>0 ? Math.round(correct/sec*60) : 0;
+  var wpm = sec>0 ? Math.round((correct/5)/sec*60) : 0;
+  var acc = total>0 ? Math.round(correct/total*100) : 0;
+
+  $("status").textContent = "完成";
+  $("status").classList.add("done");
+  $("doneBanner").classList.add("show");
+  $("result").classList.add("show");
+
+  $("rCpm").textContent = cpm;
+  $("rWpm").textContent = wpm;
+  $("rAcc").textContent = acc + "%";
+  var mm = Math.floor(sec/60), ss = Math.round(sec - mm*60);
+  $("rTime").textContent = mm + "分" + (ss<10?"0":"") + ss + "秒";
+
+  // 评价
+  var grade, words;
+  if(wpm >= 240){ grade="职业程序员级别"; words="手速惊人，代码仿佛从指尖流出。"; }
+  else if(wpm >= 180){ grade="高手级别"; words="非常流畅，几乎不需要看键盘。"; }
+  else if(wpm >= 120){ grade="熟练水平"; words="节奏稳定，稍加练习就能更上一层。"; }
+  else if(wpm >= 70){ grade="入门水平"; words="速度尚可，多敲多练会越来越快。"; }
+  else { grade="新手起步"; words="别急，正确率比速度更重要。"; }
+  $("verdict").innerHTML = "评级：<b>" + grade + "</b>。 " + words + (acc<95 ? " 注意：准确率偏低，先把 <b>准确率</b> 练上去再提速。" : "");
+
+  $("catcher").blur();
+}
+
+/* ===== 重置 ===== */
+function reset(){
+  clearInterval(timerId);
+  started = false; finished = false; paused = false;
+  typed = ""; elapsedMs = 0; correctTotal = 0;
+  $("catcher").value = "";
+  $("pauseBtn").textContent = "暂停";
+  $("status").textContent = "点击代码区开始";
+  $("status").classList.remove("done");
+  $("doneBanner").classList.remove("show");
+  $("result").classList.remove("show");
+  render();
+  updateStats();
+}
+
+/* ===== 暂停 ===== */
+function togglePause(){
+  if(finished || !started){ return; }
+  paused = !paused;
+  if(paused){
+    elapsedMs = Date.now() - startTime;
+    $("pauseBtn").textContent = "继续";
+    $("status").textContent = "已暂停";
+  } else {
+    startTime = Date.now() - elapsedMs;
+    $("pauseBtn").textContent = "暂停";
+    $("status").textContent = "计时中…";
+  }
+}
+
+/* ===== 事件绑定 ===== */
+$("codeArea").addEventListener("click", function(){
+  $("catcher").focus();
+  $("status").textContent = started ? (paused?"已暂停":"计时中…") : "就绪，输入开始";
+});
+$("tapBtn").addEventListener("click", function(){ $("catcher").focus(); });
+$("restartBtn").addEventListener("click", reset);
+$("pauseBtn").addEventListener("click", togglePause);
+$("catcher").addEventListener("input", onInput);
+$("catcher").addEventListener("keydown", function(e){
+  if(e.key === "Enter") e.preventDefault();
+});
+topicSel.addEventListener("change", function(){
+  applyTopic(topicSel.value);
+});
+$("applyCustom").addEventListener("click", function(){
+  var txt = $("customCode").value;
+  if(txt.trim().length === 0){ alert("请先粘贴代码"); return; }
+  currentLang = "";
+  currentTopic = "";
+  target = txt;
+  $("filename").textContent = "custom.txt";
+  Array.prototype.forEach.call(langsEl.children, function(btn){ btn.className = ""; });
+  topicSel.innerHTML = "";
+  var o = document.createElement("option");
+  o.value = "";
+  o.textContent = "自定义代码";
+  topicSel.appendChild(o);
+  topicSel.disabled = true;
+  reset();
+});
+
+/* ===== 初始渲染 ===== */
+fillTopics();
+Array.prototype.forEach.call(langsEl.children, function(btn){
+  btn.className = btn.dataset.lang === currentLang ? "on" : "";
+});
+$("filename").textContent = SAMPLES[currentTopic].name;
+reset();
+</script>
+</body>
+</html>
